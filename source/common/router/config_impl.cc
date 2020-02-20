@@ -58,7 +58,7 @@ convertInternalRedirectAction(const envoy::config::route::v3::RouteAction& route
 
 } // namespace
 
-std::string SslRedirector::newPath(const Http::HeaderMap& headers) const {
+std::string SslRedirector::newPath(const Http::RequestHeaderMap& headers) const {
   return Http::Utility::createSslRedirectPath(headers);
 }
 
@@ -412,7 +412,7 @@ bool RouteEntryImplBase::evaluateTlsContextMatch(const StreamInfo::StreamInfo& s
   return matches;
 }
 
-bool RouteEntryImplBase::matchRoute(const Http::HeaderMap& headers,
+bool RouteEntryImplBase::matchRoute(const Http::RequestHeaderMap& headers,
                                     const StreamInfo::StreamInfo& stream_info,
                                     uint64_t random_value) const {
   bool matches = true;
@@ -447,7 +447,7 @@ bool RouteEntryImplBase::matchRoute(const Http::HeaderMap& headers,
 
 const std::string& RouteEntryImplBase::clusterName() const { return cluster_name_; }
 
-void RouteEntryImplBase::finalizeRequestHeaders(Http::HeaderMap& headers,
+void RouteEntryImplBase::finalizeRequestHeaders(Http::RequestHeaderMap& headers,
                                                 const StreamInfo::StreamInfo& stream_info,
                                                 bool insert_envoy_original_path) const {
   if (!vhost_.globalRouteConfig().mostSpecificHeaderMutationsWins()) {
@@ -481,7 +481,7 @@ void RouteEntryImplBase::finalizeRequestHeaders(Http::HeaderMap& headers,
   }
 }
 
-void RouteEntryImplBase::finalizeResponseHeaders(Http::HeaderMap& headers,
+void RouteEntryImplBase::finalizeResponseHeaders(Http::ResponseHeaderMap& headers,
                                                  const StreamInfo::StreamInfo& stream_info) const {
   if (!vhost_.globalRouteConfig().mostSpecificHeaderMutationsWins()) {
     // Append user-specified request headers from most to least specific: route-level headers,
@@ -511,7 +511,7 @@ RouteEntryImplBase::loadRuntimeData(const envoy::config::route::v3::RouteMatch& 
   return runtime;
 }
 
-void RouteEntryImplBase::finalizePathHeader(Http::HeaderMap& headers,
+void RouteEntryImplBase::finalizePathHeader(Http::RequestHeaderMap& headers,
                                             absl::string_view matched_path,
                                             bool insert_envoy_original_path) const {
   const auto& rewrite = getPathRewrite();
@@ -528,7 +528,7 @@ void RouteEntryImplBase::finalizePathHeader(Http::HeaderMap& headers,
   headers.setPath(path.replace(0, matched_path.size(), rewrite));
 }
 
-absl::string_view RouteEntryImplBase::processRequestHost(const Http::HeaderMap& headers,
+absl::string_view RouteEntryImplBase::processRequestHost(const Http::RequestHeaderMap& headers,
                                                          absl::string_view new_scheme,
                                                          absl::string_view new_port) const {
 
@@ -567,7 +567,7 @@ absl::string_view RouteEntryImplBase::processRequestHost(const Http::HeaderMap& 
   return request_host;
 }
 
-std::string RouteEntryImplBase::newPath(const Http::HeaderMap& headers) const {
+std::string RouteEntryImplBase::newPath(const Http::RequestHeaderMap& headers) const {
   ASSERT(isDirectResponse());
 
   absl::string_view final_scheme;
@@ -802,12 +802,12 @@ PrefixRouteEntryImpl::PrefixRouteEntryImpl(
     : RouteEntryImplBase(vhost, route, factory_context, validator), prefix_(route.match().prefix()),
       path_matcher_(Matchers::PathMatcher::createPrefix(prefix_, !case_sensitive_)) {}
 
-void PrefixRouteEntryImpl::rewritePathHeader(Http::HeaderMap& headers,
+void PrefixRouteEntryImpl::rewritePathHeader(Http::RequestHeaderMap& headers,
                                              bool insert_envoy_original_path) const {
   finalizePathHeader(headers, prefix_, insert_envoy_original_path);
 }
 
-RouteConstSharedPtr PrefixRouteEntryImpl::matches(const Http::HeaderMap& headers,
+RouteConstSharedPtr PrefixRouteEntryImpl::matches(const Http::RequestHeaderMap& headers,
                                                   const StreamInfo::StreamInfo& stream_info,
                                                   uint64_t random_value) const {
   if (RouteEntryImplBase::matchRoute(headers, stream_info, random_value) &&
@@ -824,12 +824,12 @@ PathRouteEntryImpl::PathRouteEntryImpl(const VirtualHostImpl& vhost,
     : RouteEntryImplBase(vhost, route, factory_context, validator), path_(route.match().path()),
       path_matcher_(Matchers::PathMatcher::createExact(path_, !case_sensitive_)) {}
 
-void PathRouteEntryImpl::rewritePathHeader(Http::HeaderMap& headers,
+void PathRouteEntryImpl::rewritePathHeader(Http::RequestHeaderMap& headers,
                                            bool insert_envoy_original_path) const {
   finalizePathHeader(headers, path_, insert_envoy_original_path);
 }
 
-RouteConstSharedPtr PathRouteEntryImpl::matches(const Http::HeaderMap& headers,
+RouteConstSharedPtr PathRouteEntryImpl::matches(const Http::RequestHeaderMap& headers,
                                                 const StreamInfo::StreamInfo& stream_info,
                                                 uint64_t random_value) const {
   if (RouteEntryImplBase::matchRoute(headers, stream_info, random_value) &&
@@ -859,7 +859,7 @@ RegexRouteEntryImpl::RegexRouteEntryImpl(
   }
 }
 
-void RegexRouteEntryImpl::rewritePathHeader(Http::HeaderMap& headers,
+void RegexRouteEntryImpl::rewritePathHeader(Http::RequestHeaderMap& headers,
                                             bool insert_envoy_original_path) const {
   const absl::string_view path =
       Http::PathUtil::removeQueryAndFragment(headers.Path()->value().getStringView());
@@ -869,7 +869,7 @@ void RegexRouteEntryImpl::rewritePathHeader(Http::HeaderMap& headers,
   finalizePathHeader(headers, path, insert_envoy_original_path);
 }
 
-RouteConstSharedPtr RegexRouteEntryImpl::matches(const Http::HeaderMap& headers,
+RouteConstSharedPtr RegexRouteEntryImpl::matches(const Http::RequestHeaderMap& headers,
                                                  const StreamInfo::StreamInfo& stream_info,
                                                  uint64_t random_value) const {
   if (RouteEntryImplBase::matchRoute(headers, stream_info, random_value)) {
@@ -1055,7 +1055,7 @@ RouteMatcher::RouteMatcher(const envoy::config::route::v3::RouteConfiguration& r
   }
 }
 
-RouteConstSharedPtr VirtualHostImpl::getRouteFromEntries(const Http::HeaderMap& headers,
+RouteConstSharedPtr VirtualHostImpl::getRouteFromEntries(const Http::RequestHeaderMap& headers,
                                                          const StreamInfo::StreamInfo& stream_info,
                                                          uint64_t random_value) const {
   // No x-forwarded-proto header. This normally only happens when ActiveStream::decodeHeaders
@@ -1085,7 +1085,7 @@ RouteConstSharedPtr VirtualHostImpl::getRouteFromEntries(const Http::HeaderMap& 
   return nullptr;
 }
 
-const VirtualHostImpl* RouteMatcher::findVirtualHost(const Http::HeaderMap& headers) const {
+const VirtualHostImpl* RouteMatcher::findVirtualHost(const Http::RequestHeaderMap& headers) const {
   // Fast path the case where we only have a default virtual host.
   if (virtual_hosts_.empty() && wildcard_virtual_host_suffixes_.empty() &&
       wildcard_virtual_host_prefixes_.empty()) {
@@ -1124,7 +1124,7 @@ const VirtualHostImpl* RouteMatcher::findVirtualHost(const Http::HeaderMap& head
   return default_virtual_host_.get();
 }
 
-RouteConstSharedPtr RouteMatcher::route(const Http::HeaderMap& headers,
+RouteConstSharedPtr RouteMatcher::route(const Http::RequestHeaderMap& headers,
                                         const StreamInfo::StreamInfo& stream_info,
                                         uint64_t random_value) const {
   const VirtualHostImpl* virtual_host = findVirtualHost(headers);

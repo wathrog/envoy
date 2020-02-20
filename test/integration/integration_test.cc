@@ -489,7 +489,7 @@ TEST_P(IntegrationTest, Http09Enabled) {
   EXPECT_THAT(response, HasSubstr("connection: close"));
   EXPECT_THAT(response, Not(HasSubstr("transfer-encoding: chunked\r\n")));
 
-  std::unique_ptr<Http::TestHeaderMapImpl> upstream_headers =
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
       reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())->lastRequestHeaders();
   ASSERT_TRUE(upstream_headers != nullptr);
   EXPECT_EQ(upstream_headers->Host()->value(), "default.com");
@@ -508,7 +508,7 @@ TEST_P(IntegrationTest, Http10Enabled) {
   EXPECT_THAT(response, HasSubstr("connection: close"));
   EXPECT_THAT(response, Not(HasSubstr("transfer-encoding: chunked\r\n")));
 
-  std::unique_ptr<Http::TestHeaderMapImpl> upstream_headers =
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
       reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())->lastRequestHeaders();
   ASSERT_TRUE(upstream_headers != nullptr);
   EXPECT_EQ(upstream_headers->Host()->value(), "default.com");
@@ -534,7 +534,7 @@ TEST_P(IntegrationTest, TestInlineHeaders) {
                                 &response, true);
   EXPECT_THAT(response, HasSubstr("HTTP/1.1 200 OK\r\n"));
 
-  std::unique_ptr<Http::TestHeaderMapImpl> upstream_headers =
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
       reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())->lastRequestHeaders();
   ASSERT_TRUE(upstream_headers != nullptr);
   EXPECT_EQ(upstream_headers->Host()->value(), "foo.com");
@@ -565,7 +565,7 @@ TEST_P(IntegrationTest, Http10WithHostandKeepAliveAndLwsNoContentLength) {
   EXPECT_THAT(response, Not(HasSubstr("content-length:")));
   EXPECT_THAT(response, Not(HasSubstr("transfer-encoding: chunked\r\n")));
 
-  std::unique_ptr<Http::TestHeaderMapImpl> upstream_headers =
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
       reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())->lastRequestHeaders();
   ASSERT_TRUE(upstream_headers != nullptr);
   EXPECT_EQ(upstream_headers->Host()->value(), "foo.com");
@@ -576,7 +576,7 @@ TEST_P(IntegrationTest, Http10WithHostandKeepAliveAndContentLengthAndLws) {
   config_helper_.addConfigModifier(&setAllowHttp10WithDefaultHost);
   initialize();
   reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())
-      ->setResponseHeaders(std::make_unique<Http::TestHeaderMapImpl>(
+      ->setResponseHeaders(std::make_unique<Http::TestResponseHeaderMapImpl>(
           Http::TestHeaderMapImpl({{":status", "200"}, {"content-length", "10"}})));
   std::string response;
   sendRawHttpAndWaitForResponse(lookupPort("http"),

@@ -21,7 +21,7 @@ namespace Envoy {
 // static
 ToolConfig ToolConfig::create(const envoy::RouterCheckToolSchema::ValidationItem& check_config) {
   // Add header field values
-  std::unique_ptr<Http::TestHeaderMapImpl> headers(new Http::TestHeaderMapImpl());
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> headers(new Http::TestRequestHeaderMapImpl());
   headers->addCopy(":authority", check_config.input().authority());
   headers->addCopy(":path", check_config.input().path());
   headers->addCopy(":method", check_config.input().method());
@@ -41,8 +41,10 @@ ToolConfig ToolConfig::create(const envoy::RouterCheckToolSchema::ValidationItem
   return ToolConfig(std::move(headers), check_config.input().random_value());
 }
 
-ToolConfig::ToolConfig(std::unique_ptr<Http::TestHeaderMapImpl> headers, int random_value)
-    : headers_(std::move(headers)), random_value_(random_value) {}
+ToolConfig::ToolConfig(std::unique_ptr<Http::TestRequestHeaderMapImpl> request_headers,
+                       int random_value)
+    : request_headers_(std::move(request_headers)),
+      response_headers_(std::make_unique<Http::TestResponseHeaderMapImpl>()), random_value_(random_value) {}
 
 // static
 RouterCheckTool RouterCheckTool::create(const std::string& router_config_file,
@@ -129,7 +131,7 @@ bool RouterCheckTool::compareEntries(const std::string& expected_routes) {
 
     ToolConfig tool_config = ToolConfig::create(check_config);
     tool_config.route_ =
-        config_->route(*tool_config.headers_, stream_info, tool_config.random_value_);
+        config_->route(*tool_config.request_headers_, stream_info, tool_config.random_value_);
 
     const std::string& test_name = check_config.test_name();
     tests_.emplace_back(test_name, std::vector<std::string>{});
@@ -187,9 +189,9 @@ bool RouterCheckTool::compareVirtualCluster(ToolConfig& tool_config, const std::
   std::string actual = "";
 
   if (tool_config.route_->routeEntry() != nullptr &&
-      tool_config.route_->routeEntry()->virtualCluster(*tool_config.headers_) != nullptr) {
+      tool_config.route_->routeEntry()->virtualCluster(*tool_config.request_headers_) != nullptr) {
     Stats::StatName stat_name =
-        tool_config.route_->routeEntry()->virtualCluster(*tool_config.headers_)->statName();
+        tool_config.route_->routeEntry()->virtualCluster(*tool_config.request_headers_)->statName();
     actual = tool_config.symbolTable().toString(stat_name);
   }
   const bool matches = compareResults(actual, expected, "virtual_cluster_name");
@@ -240,13 +242,14 @@ bool RouterCheckTool::compareRewritePath(ToolConfig& tool_config, const std::str
                                                 factory_context_->dispatcher().timeSource());
   if (tool_config.route_->routeEntry() != nullptr) {
     if (!headers_finalized_) {
-      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.headers_, stream_info,
-                                                               true);
-      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.headers_, stream_info);
+      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.request_headers_,
+                                                               stream_info, true);
+      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.response_headers_,
+                                                                stream_info);
       headers_finalized_ = true;
     }
 
-    actual = tool_config.headers_->get_(Http::Headers::get().Path);
+    actual = tool_config.request_headers_->get_(Http::Headers::get().Path);
   }
   const bool matches = compareResults(actual, expected, "path_rewrite");
   if (matches && tool_config.route_->routeEntry() != nullptr) {
@@ -272,13 +275,14 @@ bool RouterCheckTool::compareRewriteHost(ToolConfig& tool_config, const std::str
                                                 factory_context_->dispatcher().timeSource());
   if (tool_config.route_->routeEntry() != nullptr) {
     if (!headers_finalized_) {
-      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.headers_, stream_info,
-                                                               true);
-      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.headers_, stream_info);
+      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.request_headers_,
+                                                               stream_info, true);
+      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.response_headers_,
+                                                                stream_info);
       headers_finalized_ = true;
     }
 
-    actual = tool_config.headers_->get_(Http::Headers::get().Host);
+    actual = tool_config.request_headers_->get_(Http::Headers::get().Host);
   }
   const bool matches = compareResults(actual, expected, "host_rewrite");
   if (matches && tool_config.route_->routeEntry() != nullptr) {
@@ -304,13 +308,14 @@ bool RouterCheckTool::compareRedirectPath(ToolConfig& tool_config, const std::st
                                                 factory_context_->dispatcher().timeSource());
   if (tool_config.route_->directResponseEntry() != nullptr) {
     if (!headers_finalized_) {
-      tool_config.route_->directResponseEntry()->rewritePathHeader(*tool_config.headers_, true);
-      tool_config.route_->directResponseEntry()->finalizeResponseHeaders(*tool_config.headers_,
-                                                                         stream_info);
+      tool_config.route_->directResponseEntry()->rewritePathHeader(*tool_config.request_headers_,
+                                                                   true);
+      tool_config.route_->directResponseEntry()->finalizeResponseHeaders(
+          *tool_config.response_headers_, stream_info);
       headers_finalized_ = true;
     }
 
-    actual = tool_config.route_->directResponseEntry()->newPath(*tool_config.headers_);
+    actual = tool_config.route_->directResponseEntry()->newPath(*tool_config.request_headers_);
   }
 
   const bool matches = compareResults(actual, expected, "path_redirect");
@@ -346,7 +351,7 @@ bool RouterCheckTool::compareHeaderField(
 
 bool RouterCheckTool::compareHeaderField(ToolConfig& tool_config, const std::string& field,
                                          const std::string& expected) {
-  std::string actual = tool_config.headers_->get_(field);
+  std::string actual = tool_config.request_headers_->get_(field);
   return compareResults(actual, expected, "check_header");
 }
 
@@ -358,13 +363,14 @@ bool RouterCheckTool::compareCustomHeaderField(ToolConfig& tool_config, const st
   stream_info.setDownstreamRemoteAddress(Network::Utility::getCanonicalIpv4LoopbackAddress());
   if (tool_config.route_->routeEntry() != nullptr) {
     if (!headers_finalized_) {
-      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.headers_, stream_info,
-                                                               true);
-      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.headers_, stream_info);
+      tool_config.route_->routeEntry()->finalizeRequestHeaders(*tool_config.request_headers_,
+                                                               stream_info, true);
+      tool_config.route_->routeEntry()->finalizeResponseHeaders(*tool_config.response_headers_,
+                                                                stream_info);
       headers_finalized_ = true;
     }
 
-    actual = tool_config.headers_->get_(field);
+    actual = tool_config.request_headers_->get_(field);
   }
   return compareResults(actual, expected, "custom_header");
 }

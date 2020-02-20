@@ -41,12 +41,13 @@ struct ToolConfig {
 
   Stats::SymbolTable& symbolTable() { return *symbol_table_; }
 
-  std::unique_ptr<Http::TestHeaderMapImpl> headers_;
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> request_headers_;
+  std::unique_ptr<Http::TestResponseHeaderMapImpl> response_headers_;
   Router::RouteConstSharedPtr route_;
   int random_value_{0};
 
 private:
-  ToolConfig(std::unique_ptr<Http::TestHeaderMapImpl> headers, int random_value);
+  ToolConfig(std::unique_ptr<Http::TestRequestHeaderMapImpl> request_headers, int random_value);
   Stats::TestSymbolTable symbol_table_;
 };
 
